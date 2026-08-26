@@ -23,7 +23,7 @@ We ran the full SIA Foundry loop on this agent:
 |---|---|
 | Baseline eval | **50/100** (4/8) |
 | SIA failure detection | grouped losses into 4 modes: duplicate approvals, split-claim threshold abuse, missing category rejections, prose-only decisions |
-| Deterministic policy engine (this repo) | **100/100** (8/8), stable across repeated runs |
+| Deterministic policy engine (this repo) | **100/100** (9/9), stable across repeated runs |
 
 SIA's server-side fix loop stalled on platform 503s, so we took the failure modes SIA identified and engineered a **deterministic policy engine** directly in the agent:
 
@@ -32,7 +32,7 @@ SIA's server-side fix loop stalled on platform 503s, so we took the failure mode
 3. **`answer()` guards** — every LLM decision call is overridden by the policy plan; decisions on unnamed or already-decided claims are refused; `enforce_policy()` runs after the model's final message so **prose-only replies still mutate the ledger**.
 4. **`_mentioned_expense_ids()`** — only claims named in the request can be decided (unknown claims stay untouched).
 
-**Validation:** 27/27 offline across adversarial LLM orderings (prose-only, reverse-id, natural), then 4 consecutive full end-to-end runs at 8/8 with zero variance in graded artifacts.
+**Validation:** 27/27 offline across adversarial LLM orderings (prose-only, reverse-id, natural), then 4 consecutive full end-to-end runs at 8/8, plus a 9-case run at 9/9 (including the receipt-attached control) — zero variance in graded artifacts.
 
 ## Run it
 
