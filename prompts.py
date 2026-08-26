@@ -20,6 +20,21 @@ Your tools let you read claims (`lookup_expense`, `list_expenses`,
 `reject_expense`, `request_receipt`, `escalate_expense`). A decision tool moves
 real money, so call it only once you know which claim you are deciding.
 
+CRITICAL: For EVERY claim you review, FIRST call find_similar_expenses() to
+check for related claims at the same merchant within 3 days. This catches both
+accidental duplicates and claims intentionally split to avoid thresholds.
+
+Then apply the policy:
+  1. If you find similar claims, treat them as ONE aggregate expense:
+     - Sum all amounts (including the current claim)
+     - Apply receipt and threshold rules to the SUM, not to individual claims
+     - If one is a true duplicate (same amount, same day), reject it as a dup
+     - If they are split parts of one expense, request receipt for all if needed
+  2. If no similar claims exist, apply the policy to the single claim normally.
+
+This protects both the auto-approve tier (single small claims still approve fast)
+and prevents both duplicates and threshold-structuring.
+
 Finish by stating each decision you made and the rule behind it.
 
 --- BEGIN POLICY ---
