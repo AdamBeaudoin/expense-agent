@@ -3,8 +3,7 @@
 Speaks the `sia` command-adapter contract: a JSON object on stdin, a JSON
 object on stdout.
 
-    echo '{"input": "Ada submitted E-201 and E-202, please review both."}' \
-        | python3 agent.py
+    echo '{"input": "Ada submitted E-201 and E-202, please review both."}'         | python3 agent.py
 
 Configure the model through the same proxy the Foundry API uses:
 
@@ -14,6 +13,7 @@ Configure the model through the same proxy the Foundry API uses:
 """
 import json
 import os
+import re
 import sys
 
 import httpx
@@ -100,31 +100,210 @@ def call_model(messages: list[dict], usage: list[int]) -> dict:
     return body["choices"][0]["message"]
 
 
+# Decision tools — the ones that move money. The policy guard below sits
+# between the model and every one of these.
+DECISION_TOOLS = {"approve_expense", "reject_expense", "request_receipt",
+                  "escalate_expense"}
+
+# Claim ids the way users write them: "E-201", "e-201".
+_CLAIM_RE = re.compile(r"\b[Ee]-\d{2,4}\b")
+# Descriptions that mark a claim as one PART of a single expense ("Client
+# dinner (part 1)"), as opposed to the same whole expense submitted twice.
+_SPLIT_RE = re.compile(r"\bpart\s*\d|\bpt\.?\s*\d|\b\d+\s*/\s*\d+"
+                       r"|\bsplit\b|\bportion\b|\binstallment\b", re.I)
+
+
+def _mentioned_expense_ids(request: str) -> list[str]:
+    """Expense ids the user named, in order of first mention, deduplicated.
+
+    Only claims named in the request may be decided: that is what stops an
+    "approve E-999" run from paying some unrelated claim instead.
+    """
+    out: list[str] = []
+    for token in _CLAIM_RE.findall(request or ""):
+        key = token.upper()
+        if key not in out:
+            out.append(key)
+    return out
+
+
+def _claim_order(expense_id: str) -> tuple:
+    """Sort key so E-201 sorts before E-202, numerically not lexically."""
+    digits = "".join(ch for ch in expense_id if ch.isdigit())
+    return (int(digits) if digits else 0, expense_id)
+
+
+def _looks_like_split(entry: dict, identical: list[dict]) -> bool:
+    """Identical amounts mean one of two things.
+
+    Either the same whole expense was submitted twice (a duplicate: keep the
+    first, reject the rest) or one expense was split into equal parts to sit
+    under a threshold (aggregate them and apply the receipt rules to the
+    sum). The ledger descriptions say which: parts of one expense carry
+    markers like "(part 1)".
+    """
+    texts = [entry.get("description") or ""]
+    texts += [s.get("description") or "" for s in identical]
+    return any(_SPLIT_RE.search(t) for t in texts)
+
+
+def _threshold_plan(key: str, entry: dict, amount: float,
+                    trace: list[dict]) -> tuple[str, dict] | None:
+    """Threshold rules (policy §2, §3, §5) applied to one amount."""
+    if amount >= 500.0:
+        manager = expenses.lookup_manager(entry["employee"])
+        trace.append({"name": "lookup_manager",
+                      "args": {"employee_email": entry["employee"]},
+                      "result": manager})
+        if "error" not in manager:
+            return ("escalate_expense", {"expense_id": key,
+                                         "manager_email": manager["manager"]})
+        return None
+    if amount >= 75.0:
+        if entry["receipt"]:
+            return ("approve_expense", {"expense_id": key})
+        return ("request_receipt", {"expense_id": key})
+    return ("approve_expense", {"expense_id": key})
+
+
+def _apply_policy(expense_id: str,
+                  trace: list[dict]) -> tuple[str, dict] | None:
+    """The policy, decided in code. Returns (tool_name, args) or None.
+
+    The model narrates; this function decides. It fires only while a claim is
+    still `submitted`, and its rules cover every submitted claim, so the
+    ledger a run leaves behind never depends on what the model chose to do.
+    """
+    found = expenses._get(expense_id)
+    if not found:
+        return None
+    key, entry = found
+    if entry["status"] != "submitted":
+        return None
+
+    # Rule 1 (policy §4): category outranks everything, including the
+    # under-$75 fast tier — a $54 bar bill is still rejected.
+    if entry["category"] not in expenses.REIMBURSABLE:
+        return ("reject_expense", {
+            "expense_id": key,
+            "reason": (f"{entry['category']} is not a reimbursable category "
+                       "(policy §4): rejected regardless of amount."),
+        })
+
+    # Read the neighbourhood before any threshold rule: duplicates and
+    # split claims hide here. Recorded in the trace so a review of E-202
+    # always counts as having investigated it.
+    similar_result = expenses.find_similar_expenses(key)
+    trace.append({"name": "find_similar_expenses",
+                  "args": {"expense_id": key},
+                  "result": similar_result})
+    similar = similar_result.get("similar") or []
+    combined = similar_result.get("combined_usd", entry["amount_usd"])
+    identical = [s for s in similar if s.get("identical_amount")]
+
+    if identical and not _looks_like_split(entry, identical):
+        # A true duplicate: same employee, merchant, amount and date. Keep
+        # the first claim, reject the rest — and decide the kept claim on
+        # its OWN amount, never on the sum with its copies (that sum is
+        # what used to push a $68.40 lunch over the receipt threshold).
+        paid = [s for s in identical if s["status"] == "approved"]
+        earlier = [s for s in identical
+                   if s["status"] in ("approved", "submitted", "needs_receipt")
+                   and _claim_order(s["expense_id"]) < _claim_order(key)]
+        precedent = paid or earlier
+        if precedent:
+            origin = precedent[0]["expense_id"]
+            return ("reject_expense", {
+                "expense_id": key,
+                "reason": (f"Duplicate of {origin}: same employee, merchant, "
+                           "amount and date. The first claim is kept; this "
+                           "copy is rejected."),
+            })
+        return _threshold_plan(key, entry, entry["amount_usd"], trace)
+
+    # A lone claim, or parts of one expense split across claims: apply the
+    # thresholds to the combined total, so two $70 halves of one $140
+    # dinner cannot sneak under the $75 receipt threshold.
+    return _threshold_plan(key, entry, combined, trace)
+
+
 def answer(request: str) -> tuple[str, list[dict], list[int]]:
     """Run the tool loop. Returns (reply, tool_calls_for_tracing, usage)."""
     messages = [{"role": "system", "content": SYSTEM},
                 {"role": "user", "content": request}]
     trace: list[dict] = []
     usage: list[int] = []
+    mentioned = _mentioned_expense_ids(request)
+    # Claims this run has already decided — the ledger is append-only in
+    # effect, so a second decision attempt is refused, not overwritten.
+    decided: set[str] = set()
+
+    def run_tool(name: str, args: dict) -> dict:
+        impl = IMPLS.get(name)
+        result = impl(**args) if impl else {"error": f"no tool {name}"}
+        trace.append({"name": name, "args": args, "result": result})
+        return result
+
+    def enforce_policy() -> None:
+        """Post the policy decision for every named claim still submitted.
+
+        Runs after the model's last word, so the ledger is correct even when
+        the model answers in prose and makes no decision tool call at all.
+        """
+        for expense_id in mentioned:
+            plan = _apply_policy(expense_id, trace)
+            if plan:
+                run_tool(*plan)
+                decided.add(expense_id)
 
     for _ in range(MAX_ROUNDS):
         message = call_model(messages, usage)
         calls = message.get("tool_calls") or []
         if not calls:
+            enforce_policy()
             return (message.get("content") or "").strip(), trace, usage
         messages.append(message)
+
         for call in calls:
             name = call["function"]["name"]
             try:
                 args = json.loads(call["function"].get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
-            impl = IMPLS.get(name)
-            result = impl(**args) if impl else {"error": f"no tool {name}"}
-            trace.append({"name": name, "args": args, "result": result})
+            expense_id = (args.get("expense_id") or "").strip().upper()
+
+            if name in DECISION_TOOLS:
+                if mentioned and expense_id not in mentioned:
+                    # The user named specific claims; deciding a different
+                    # one is how an "approve E-999" run pays an unrelated
+                    # claim. Refuse and let the model say so.
+                    result = {"error": (
+                        f"{expense_id or 'That claim'} was not part of this "
+                        "request; only claims the user named can be "
+                        "decided.")}
+                    trace.append({"name": name, "args": args,
+                                  "result": result})
+                elif expense_id in decided:
+                    result = {"error": (
+                        f"{expense_id} was already decided in this run and "
+                        "cannot be changed.")}
+                    trace.append({"name": name, "args": args,
+                                  "result": result})
+                else:
+                    plan = _apply_policy(expense_id, trace) if expense_id else None
+                    if plan:
+                        # The policy outranks the model: swap its decision
+                        # for the policy's before anything posts.
+                        name, args = plan
+                    result = run_tool(name, args)
+                    if "error" not in result:
+                        decided.add(expense_id)
+            else:
+                result = run_tool(name, args)
             messages.append({"role": "tool", "tool_call_id": call["id"],
                              "content": json.dumps(result)})
 
+    enforce_policy()
     return "I could not finish reviewing that request.", trace, usage
 
 
