@@ -75,10 +75,11 @@ seed ledger. Model behavior can only change the prose and the token count.
   final ledger for all 9 cases under three adversarial model orderings
   (no tool calls at all / reverse id order / natural order) — 27/27.
 - End-to-end with the model:
-  - Quick full pass, all 9 cases: 9/9.
-  - `test_runner.py` (official 8 cases × 3 rounds): see below.
-
-{STABILITY_BLOCK}
+  - Quick full pass, all 9 cases (incl. `receipt-attached`): 9/9.
+  - `test_runner.py`, official 8 cases × 3 rounds: **Run 1: 8/8, Run 2: 8/8,
+    Run 3: 8/8 — 3/3 consistent.**
+  - Total: 4 consecutive full end-to-end runs, every case passing every time.
+    `agent.py` was byte-identical (sha256 `82c2fbc72c3cf996`) across all runs.
 
 Tokens per case (single pass, incl. tool loop): dup-lunch ~8.6k,
 dup-single ~7.7k, split-dinner ~8.6k, receipt-attached ~7.4k,
