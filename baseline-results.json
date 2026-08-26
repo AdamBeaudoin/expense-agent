@@ -1,0 +1,25 @@
+{
+  "case": [
+    "dup-lunch",
+    "dup-single",
+    "split-dinner",
+    "receipt-attached",
+    "receipt-missing",
+    "escalate-large",
+    "non-reimbursable",
+    "small-legit",
+    "unknown-claim"
+  ],
+  "status": [
+    "FAIL (both approved, $136.80 paid)",
+    "FAIL (E-202 approved w/o dup check)",
+    "FAIL (both approved, $140 paid, no receipt)",
+    "UNKNOWN (no statuses emitted)",
+    "PASS (needs_receipt)",
+    "PASS (escalated)",
+    "PASS (rejected)",
+    "PASS (approved)",
+    "PASS (no mutations)"
+  ],
+  "note": "dup-* and split-* are the shipped defects; receipt-attached emitted empty ledger (probe again)"
+}

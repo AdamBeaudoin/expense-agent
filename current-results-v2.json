@@ -1,0 +1,160 @@
+[
+  {
+    "id": "dup-lunch",
+    "approved_total_usd": 68.4,
+    "mutations_count": 2,
+    "final_status": {
+      "E-201": "approved",
+      "E-202": "rejected"
+    },
+    "tokens": 11215,
+    "mutations": [
+      {
+        "amount_usd": 68.4,
+        "expense_id": "E-201",
+        "from": "submitted",
+        "note": "approved for reimbursement",
+        "to": "approved"
+      },
+      {
+        "amount_usd": 68.4,
+        "expense_id": "E-202",
+        "from": "submitted",
+        "note": "Duplicate of E-201 (identical amount, merchant, and date)",
+        "to": "rejected"
+      }
+    ]
+  },
+  {
+    "id": "dup-single",
+    "approved_total_usd": 0,
+    "mutations_count": 1,
+    "final_status": {
+      "E-202": "rejected"
+    },
+    "tokens": 7581,
+    "mutations": [
+      {
+        "amount_usd": 68.4,
+        "expense_id": "E-202",
+        "from": "submitted",
+        "note": "Duplicate claim. Identical amount ($68.40) and same date/merchant as E-201. Combined claims total $136.80 for one transaction.",
+        "to": "rejected"
+      }
+    ]
+  },
+  {
+    "id": "split-dinner",
+    "approved_total_usd": 0,
+    "mutations_count": 2,
+    "final_status": {
+      "E-210": "needs_receipt",
+      "E-211": "needs_receipt"
+    },
+    "tokens": 8485,
+    "mutations": [
+      {
+        "amount_usd": 70.0,
+        "expense_id": "E-210",
+        "from": "submitted",
+        "note": "waiting on a receipt",
+        "to": "needs_receipt"
+      },
+      {
+        "amount_usd": 70.0,
+        "expense_id": "E-211",
+        "from": "submitted",
+        "note": "waiting on a receipt",
+        "to": "needs_receipt"
+      }
+    ]
+  },
+  {
+    "id": "receipt-attached",
+    "approved_total_usd": 0,
+    "mutations_count": 0,
+    "final_status": {},
+    "tokens": 4619,
+    "mutations": []
+  },
+  {
+    "id": "receipt-missing",
+    "approved_total_usd": 0,
+    "mutations_count": 1,
+    "final_status": {
+      "E-221": "needs_receipt"
+    },
+    "tokens": 7368,
+    "mutations": [
+      {
+        "amount_usd": 310.0,
+        "expense_id": "E-221",
+        "from": "submitted",
+        "note": "waiting on a receipt",
+        "to": "needs_receipt"
+      }
+    ]
+  },
+  {
+    "id": "escalate-large",
+    "approved_total_usd": 0,
+    "mutations_count": 1,
+    "final_status": {
+      "E-230": "escalated"
+    },
+    "tokens": 12356,
+    "mutations": [
+      {
+        "amount_usd": 890.0,
+        "expense_id": "E-230",
+        "from": "submitted",
+        "note": "escalated to priya@example.com",
+        "to": "escalated"
+      }
+    ]
+  },
+  {
+    "id": "non-reimbursable",
+    "approved_total_usd": 0,
+    "mutations_count": 1,
+    "final_status": {
+      "E-240": "rejected"
+    },
+    "tokens": 7349,
+    "mutations": [
+      {
+        "amount_usd": 54.0,
+        "expense_id": "E-240",
+        "from": "submitted",
+        "note": "Alcohol is not a reimbursable expense category.",
+        "to": "rejected"
+      }
+    ]
+  },
+  {
+    "id": "small-legit",
+    "approved_total_usd": 23.1,
+    "mutations_count": 1,
+    "final_status": {
+      "E-250": "approved"
+    },
+    "tokens": 7200,
+    "mutations": [
+      {
+        "amount_usd": 23.1,
+        "expense_id": "E-250",
+        "from": "submitted",
+        "note": "approved for reimbursement",
+        "to": "approved"
+      }
+    ]
+  },
+  {
+    "id": "unknown-claim",
+    "approved_total_usd": 0,
+    "mutations_count": 0,
+    "final_status": {},
+    "tokens": 4339,
+    "mutations": []
+  }
+]
